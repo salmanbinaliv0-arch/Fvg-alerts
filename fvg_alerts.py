@@ -17,12 +17,11 @@ import sys
 import numpy as np
 import pandas as pd
 import requests
-import yfinance as yf
 
 # ---- Settings (override with environment variables) ----
-SYMBOL = os.getenv("SYMBOL", "GC=F")        # gold futures (free data)
-INTERVAL = os.getenv("INTERVAL", "15m")     # 1m, 5m, 15m, 30m, 60m
-PERIOD = os.getenv("PERIOD", "7d" if INTERVAL == "1m" else "59d")
+SYMBOL = os.getenv("SYMBOL", "XAU/USD")     # spot gold (Twelve Data)
+INTERVAL = os.getenv("INTERVAL", "15min")   # 1min, 5min, 15min, 30min, 1h
+API_KEY = os.getenv("TWELVEDATA_API_KEY", "")
 GAP_FILTER = float(os.getenv("GAP_FILTER", "0.5"))
 RR = float(os.getenv("RR", "2.0"))
 STDEV_LEN = 200
@@ -46,15 +45,23 @@ def send_telegram(text):
 
 
 def load_data():
-    df = yf.download(SYMBOL, period=PERIOD, interval=INTERVAL,
-                     auto_adjust=False, progress=False)
-    if isinstance(df.columns, pd.MultiIndex):
-        df.columns = df.columns.get_level_values(0)
-    df = df[["Open", "High", "Low", "Close"]].dropna()
-    if df.index.tz is None:
-        df.index = df.index.tz_localize("UTC")
-    else:
-        df.index = df.index.tz_convert("UTC")
+    r = requests.get(
+        "https://api.twelvedata.com/time_series",
+        params={"symbol": SYMBOL, "interval": INTERVAL,
+                "outputsize": 600, "timezone": "UTC",
+                "apikey": API_KEY},
+        timeout=30,
+    )
+    r.raise_for_status()
+    j = r.json()
+    if j.get("status") == "error" or "values" not in j:
+        raise RuntimeError(f"Twelve Data error: {j.get('message', j)}")
+    df = pd.DataFrame(j["values"])
+    df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
+    df = df.set_index("datetime").sort_index()
+    df = df.rename(columns={"open": "Open", "high": "High",
+                            "low": "Low", "close": "Close"})
+    df = df[["Open", "High", "Low", "Close"]].astype(float).dropna()
     # keep only fully closed bars (Pine alerts fire at bar close)
     now = pd.Timestamp.now(tz="UTC")
     delta = pd.Timedelta(INTERVAL)
@@ -167,3 +174,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
