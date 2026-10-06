@@ -22,14 +22,16 @@ jobs:
         with:
           python-version: "3.11"
 
-      - run: pip install yfinance pandas numpy requests
+      - run: pip install pandas numpy requests
 
       - name: Run FVG alerts
         env:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          INTERVAL: "15m"
-          SYMBOL: "GC=F"
+          INTERVAL: "15min"
+          SYMBOL: "XAU/USD"
+          TWELVEDATA_API_KEY: ${{ secrets.TWELVEDATA_API_KEY }}
+
         run: python fvg_alerts.py
 
       - name: Save state
